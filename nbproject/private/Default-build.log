@@ -1,0 +1,7 @@
+g++ Node.cpp Node.h Event.h -g -o lab2.exe
+Node.cpp: In function 'int main()':
+Node.cpp:15:19: error: 'Event' was not declared in this scope
+Node.cpp:15:24: error: template argument 2 is invalid
+Node.cpp:15:24: error: template argument 4 is invalid
+Node.cpp:15:28: error: invalid type in declaration before ';' token
+make.exe": *** [lab2] Error 1
