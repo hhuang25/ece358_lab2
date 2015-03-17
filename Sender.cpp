@@ -7,13 +7,16 @@
 #include <vector>
 #include "Sender.h"
 
+enum SimulationType {ABP, ABP_NAK, GBN};
+SimulationType simulationType = ABP;
 double tau = 0.005; //2tau is 10 ms and also 500 ms.
 double delta = 2.5*tau; //timeout, 2.5 tau, 5 tau, ... 12.5 tau
 int H = 54*8; //header length
 int l = 1500*8; //packet length
 int L = H+l; //packet
-double BER = 0.0001;
-int C = 5000; //channel capacity
+int N = 1; //buffer size
+double BER = 0.00001;
+int C = 5000000; //channel capacity
 int received_frames = 0;
 int error_frames = 0;
 int lost_frames = 0;
@@ -33,7 +36,7 @@ Event Sender::Send()
     int error_bits = 0;
     
     //forward channel
-    tc+= tau;
+    tc += tau + (double)l/C;
     event1.time = tc;
     
     for(int i = 0; i < L; i++){
@@ -57,10 +60,9 @@ Event Sender::Send()
     //receiver
     Event returnEvent = receiver.receive(tc,SN,event1.flag);
     
-    //why is this being done even if the sender packet got lost?
     //reverse channel
     tc = returnEvent.time;
-    tc += (double)tau;
+    tc += tau + (double)H/C;
     returnEvent.time = tc;
     
     error_bits = 0;
@@ -96,22 +98,24 @@ void Sender::EventProcessor()
 {
     std::priority_queue<Event,std::vector<Event>, OrderBySmallestTime> ES;
     Event event;
-    next_expected_ack = (SN+1)%2;
+    next_expected_ack = (SN+1)%(N+1);
     tc = 0.0;
     
     event.time = tc + ((double)L)/C + delta;
     event.eventType = Event::TIME_OUT;
     ES.push(event);
     
+    //std::cout<< "First timeout: "<< event.time<< std::endl;
     Event returnedEvent = Send();
+    //std::cout<< "First ack time: "<< returnedEvent.time<< std::endl;
     if(returnedEvent.flag != Event::lost){
         ES.push(returnedEvent);
     }
     
     while(received_frames < TOTAL_PACKETS){
         //std::cout<<std::endl;
-        //std::cout<< "received frames: "<< received_frames<< std::endl;
         //std::cout<< "current time: "<< tc<< std::endl;
+        //std::cout<< "received frames: "<< received_frames<< std::endl;
         //std::cout<< "ES size is "<< ES.size()<< std::endl;
         //printES(ES);
         //std::cout<<"----Top item: "<<ES.top()<<std::endl;
@@ -121,20 +125,26 @@ void Sender::EventProcessor()
                 && ES.top().flag == Event::errorFree
                 && ES.top().RN == next_expected_ack)
         {
+            tc = ES.top().time;
+            //std::cout<< "top tc: "<< ES.top().time<< std::endl;
             ES.pop();
             ES.pop();
             SN++;
-            next_expected_ack = (SN+1)%2;
+            next_expected_ack = (SN+1)%(N+1);
             //tc += ;
             Event newEvent;
-            newEvent.time = tc + ((double)L)/C + delta;
+            newEvent.time = tc + ((double)L)/(double)C + delta;
+            //std::cout<< "inserted timeout event time: "<< newEvent.time<< std::endl;
             newEvent.eventType = Event::TIME_OUT;
             ES.push(newEvent);
             returnedEvent = Send();
+            //std::cout<< "returned event time: "<< returnedEvent.time<< std::endl;
             if(returnedEvent.flag != Event::lost){
                 ES.push(returnedEvent);
             }
         }else if(ES.top().eventType == Event::TIME_OUT){
+            tc = ES.top().time;
+            //std::cout<< "timeout tc: "<< tc<< std::endl;
             ES.pop();
             //tc += ;
             Event newEvent;
@@ -145,7 +155,26 @@ void Sender::EventProcessor()
             if(returnedEvent.flag != Event::lost){
                 ES.push(returnedEvent);
             }
-        }else{
+        }else if(ES.top().eventType == Event::ACK 
+                    && ES.top().RN != next_expected_ack
+                    && simulationType == ABP_NAK){
+            tc = ES.top().time;
+            //std::cout<< "timeout tc: "<< tc<< std::endl;
+            ES.pop();
+            ES.pop();
+            //tc += ;
+            Event newEvent;
+            newEvent.time = tc + ((double)L)/C + delta;
+            newEvent.eventType = Event::TIME_OUT;
+            ES.push(newEvent);
+            returnedEvent = Send();
+            if(returnedEvent.flag != Event::lost){
+                ES.push(returnedEvent);
+            }
+        }
+        else{
+            tc = ES.top().time;
+            //std::cout<< "has error tc: "<< tc<< std::endl;
             ES.pop();
         }
         //break;
@@ -158,7 +187,35 @@ void Sender::EventProcessor()
 //timeout is registered at tc + L/C + delta
 int main(int argc, char* argv[])
 {
+    if(argc == 2){
+        std::string argv1 = argv[1];
+        if(argv1=="ABP"){
+            //std::cout<<"begin ABP"<<std::endl;
+            simulationType = ABP;
+            N = 1;
+        }else if(argv1=="ABP_NAK"){
+            //std::cout<<"begin ABP_NAK"<<std::endl;
+            simulationType = ABP_NAK;
+            N = 1;
+        }else if(argv1=="GBN"){
+            //std::cout<<"begin GBN"<<std::endl;
+            simulationType = GBN;
+            N = 4;
+        }else{
+            std::cout<<"incorrect parameters: "<<argv[1]<<std::endl;
+            return 1;
+        }
+    }
     srand(time(0));
+    
+//    Sender sender;
+//    simulationType = ABP_NAK;
+//    sender.EventProcessor();
+//    std::cout<< "throughput is: "<< ((double)l)*TOTAL_PACKETS/sender.tc<< std::endl;
+//    std::cout<< "error frames/acks: "<< error_frames<<std::endl;
+//    std::cout<< "lost frames: "<< lost_frames<<std::endl;
+//    return 0;
+    
     double actual_tau[2] = {0.005, 0.25};
     double actual_ber[3] = {0.0, 0.00001, 0.0001};
     for(double i = 2.5; i < 12.51; i += 2.5)
@@ -186,9 +243,7 @@ int main(int argc, char* argv[])
         }
         std::cout<<std::endl;
     }
-    //std::cout<< "throughput is: "<< ((double)l)*TOTAL_PACKETS/sender.tc<< std::endl;
-    //std::cout<< "error frames/acks: "<< error_frames<<std::endl;
-    //std::cout<< "lost frames: "<< lost_frames<<std::endl;
+    
 
     return 0;
 }

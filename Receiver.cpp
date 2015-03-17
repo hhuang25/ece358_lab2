@@ -17,9 +17,10 @@ Event Receiver::receive(double time, int SN, Event::error_flag flag)
     extern int received_frames;
     extern int error_frames;
     extern int lost_frames;
+    extern int N;
     
     if(flag == Event::errorFree){
-        next_expected_frame = (next_expected_frame+1)%2;
+        next_expected_frame = (next_expected_frame+1)%(N+1);
         //RN = next_expected_frame;
         //std::cout<<"next expected frame: "<< next_expected_frame<<std::endl;
         time += ((double)H)/C;
