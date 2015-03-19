@@ -17,5 +17,6 @@ class Sender
                 Event Send();
                 void printES(std::priority_queue<Event,std::vector<Event>, OrderBySmallestTime> ES);
                 void EventProcessor();
+                void EventGBNProcessor();
 };
 #endif
