@@ -20,22 +20,21 @@ Event Receiver::receive(double time, int SN, Event::error_flag flag)
     extern int N;
     //extern int simulationTypeNumber;
     
+    event.time = time;
     if(flag == Event::errorFree){
         next_expected_frame = (next_expected_frame+1)%(N+1);
         //RN = next_expected_frame;
         //std::cout<<"next expected frame: "<< next_expected_frame<<std::endl;
-        time += ((double)H)/C;
-        event.time = time;
+        event.time = time + ((double)H)/C;
         event.RN = next_expected_frame;
         event.eventType = Event::ACK;
-        received_frames++;
+        //received_frames++;
 		//exit(0) after 10000 frames
         event.eventType = Event::ACK;
     }else if(flag == Event::hasError){
         //only for ABP, do nothing for GBN?
         //if(simulationTypeNumber != 2){
-        time += ((double)H)/C;
-        event.time = time;
+        event.time = time + ((double)H)/C;
         event.RN = next_expected_frame;
         event.eventType = Event::ACK;
         //}
