@@ -27,3 +27,5 @@
 *.out
 *.app
 *data.jpg
+*data.png
+~\$*

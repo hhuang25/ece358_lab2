@@ -17,12 +17,12 @@ int l = 1500*8; //packet length
 int L = H+l; //packet
 int N = 4; //buffer size
 std::deque<double> buffer;
-double BER = 0.01;
+double BER = 0.0000;
 int C = 5000000; //channel capacity
 int received_frames = 0;
 int error_frames = 0;
 int lost_frames = 0;
-const int TOTAL_PACKETS = 10;
+const int TOTAL_PACKETS = 10000;
 
 Sender::Sender()
 {
@@ -38,11 +38,13 @@ Event Sender::Send()
     int error_bits = 0;
     
     //forward channel
-    tc += tau + (double)L/C;
-    //for GBN, time is the first item in the buffer
+    //for GBN, time is the first(or last)? item in the buffer
     if(simulationType == GBN){
         tc = buffer.back() + tau;
+    }else{
+        tc += tau + (double)L/C;
     }
+    
     event1.time = tc;
     
     for(int i = 0; i < L; i++){
@@ -199,7 +201,6 @@ void Sender::EventGBNProcessor()
     //double bufferArray[N];
     
     int P = (SN)%(N+1); // current ack
-    int tail = P;
     tc = 0.0;
     timeout.eventType = Event::TIME_OUT;
     timeout.time = tc + ((double)L)/C + delta;
@@ -207,7 +208,6 @@ void Sender::EventGBNProcessor()
     //create buffer, fill it with items.
     tc+=((double)L)/C;
     buffer.push_back(tc);
-    tail = (tail+1)%N+1;
     Event returnedEvent = Send();
     //returned result stored in ES
     if(returnedEvent.flag != Event::lost){
@@ -217,25 +217,24 @@ void Sender::EventGBNProcessor()
     while(buffer.size()<N){
         tc+=((double)L)/C;
         buffer.push_back(buffer.back() + ((double) L)/C);
-        tail = (tail+1)%N+1;
         Event returnedEvent = Send();
         if(returnedEvent.flag != Event::lost){
             ES.push(returnedEvent);
         }
     }
     
-    while(received_frames < (TOTAL_PACKETS-1)){
-        std::cout<<std::endl;
-        std::cout<< "current time: "<< tc<< std::endl;
-        std::cout<< "Buffer has "<<buffer.size()<<" items: ";
-        for(int i = 0; i < buffer.size(); i++){
-            std::cout<<buffer.at(i)<< " ";
-        }
-        std::cout<<std::endl;
-        std::cout<< "timeout at "<< timeout.time<< std::endl;
+    while(received_frames < (TOTAL_PACKETS)){
+//        std::cout<<std::endl;
+//        std::cout<< "current time: "<< tc<< std::endl;
+//        std::cout<< "Buffer has "<<buffer.size()<<" items: ";
+//        for(int i = 0; i < buffer.size(); i++){
+//            std::cout<<buffer.at(i)<< " ";
+//        }
+//        std::cout<<std::endl;
+//        std::cout<< "timeout at "<< timeout.time<< std::endl;
 //        std::cout<< "received frames: "<< received_frames<< std::endl;
-        std::cout<< "ES size is "<< ES.size()<< std::endl;
-//        printES(ES);
+//        std::cout<< "ES size is "<< ES.size()<< std::endl;
+//        if(!ES.empty()) printES(ES);
 //        std::cout<<"----Top item: "<<ES.top()<<std::endl;
         
 //        std::cout<<"------ current P: "<<P<<std::endl;
@@ -243,11 +242,17 @@ void Sender::EventGBNProcessor()
         
         //if top item is ack, not timeout
         if((ES.size()>0) && ES.top().time < timeout.time
+                && ES.top().eventType == Event::ACK
                 && ES.top().flag == Event::errorFree
                 && ES.top().RN != P)
         {
             int topRN = ES.top().RN;
-            std::cout<<"------ top RN: "<<topRN<<std::endl;
+	    tc = ES.top().time;
+	    ES.pop();
+            if(tc < buffer.back()){
+                //tc = buffer.back();
+            }
+//            std::cout<<"~~Success, top RN: "<<topRN<<std::endl;
             //this implies you received all previous frames
             //therefore keep popping
             while(P != topRN){
@@ -256,33 +261,44 @@ void Sender::EventGBNProcessor()
                 received_frames++;
                 SN++;
                 P = (P+1)%(N+1);
-                tc = ES.top().time;
-                ES.pop();
-                buffer.push_back(tc + ((double) L)/C);
+                //if the ack comes back before the buffer's last item's been sent
+                //I can't send the next one until after the buffer's last item
+                if(received_frames >= (TOTAL_PACKETS)){
+//                    std::cout<< "exiting at: "<< tc<< std::endl;
+                    break;
+                }
+                if(tc > buffer.back()){
+                    buffer.push_back(tc + ((double) L)/C);
+                }else{
+                    buffer.push_back(buffer.back() + ((double) L)/C);
+                }
                 buffer.pop_front();
                 timeout.time = buffer.front() + ((double)L)/C + delta;
-                tail = (tail+1)%N+1;
                 Event returnedEvent = Send();
                 if(returnedEvent.flag != Event::lost){
                     ES.push(returnedEvent);
                 }
             }
         //top item is a timeout
-        }else if((ES.size()>0) && ES.top().time > timeout.time){
+        }else if((ES.size()>0) 
+                && ES.top().time > timeout.time
+                && ES.top().eventType == Event::ACK){
             //empty ES
             //resend every item in buffer
             tc = timeout.time;
-            std::cout<<"--timeout: "<<timeout.time << " < " <<ES.top()<<std::endl;
+//            std::cout<<"~~timeout "<<timeout.time << " < ES " <<ES.top()<<std::endl;
+//            std::cout<<"------ current P: "<<P<<std::endl;
+            while(!ES.empty()){
+                ES.pop();
+            }
             buffer.clear();
             buffer.push_back(tc + ((double) L)/C);
-            tail = (tail+1)%N+1;
             Event returnedEvent = Send();
             if(returnedEvent.flag != Event::lost){
                 ES.push(returnedEvent);
             }
             while(buffer.size()<N){
                 buffer.push_back(buffer.back() + ((double) L)/C);
-                tail = (tail+1)%N+1;
                 Event returnedEvent = Send();
                 if(returnedEvent.flag != Event::lost){
                     ES.push(returnedEvent);
@@ -291,17 +307,17 @@ void Sender::EventGBNProcessor()
             timeout.time = buffer.front() + ((double)L)/C + delta;
         }else{
             //ignore errors, but you should repopulate buffer if needed
-            received_frames++;
-            std::cout<<"Neither good ack nor timeout. ES empty? " <<ES.empty()<<std::endl;
+            //received_frames++;
+//            std::cout<<"~~Neither good ack nor timeout."<<std::endl;
             if(!ES.empty()){
-                printES(ES);
+//                std::cout<<"top item: " <<ES.top()<<std::endl;
+                //tc = ES.top().time;
                 ES.pop();
             }else{
                 //repopulate
                 buffer.clear();
                 tc = timeout.time;
                 buffer.push_back(tc + ((double) L)/C);
-                tail = (tail+1)%N+1;
                 Event returnedEvent = Send();
                 if(returnedEvent.flag != Event::lost){
                     ES.push(returnedEvent);
@@ -309,7 +325,6 @@ void Sender::EventGBNProcessor()
                 while(buffer.size()<N){
                     tc+=((double)L)/C;
                     buffer.push_back(buffer.back() + ((double) L)/C);
-                    tail = (tail+1)%N+1;
                     Event returnedEvent = Send();
                     if(returnedEvent.flag != Event::lost){
                         ES.push(returnedEvent);
@@ -389,18 +404,19 @@ int main(int argc, char* argv[])
         return 0;
     }
     
-    Sender sender;
-    simulationType = GBN;
-    if(simulationType != GBN){
-                sender.EventProcessor();
-        }else{
-                buffer.clear(); //remember to clear buffer for GBN
-                sender.EventGBNProcessor();
-        }
-    std::cout<< "throughput is: "<< ((double)l)*TOTAL_PACKETS/sender.tc<< std::endl;
-    std::cout<< "error frames/acks: "<< error_frames<<std::endl;
-    std::cout<< "lost frames: "<< lost_frames<<std::endl;
-    return 0;
+//    Sender sender;
+//    simulationType = GBN;
+//    if(simulationType != GBN){
+//                sender.EventProcessor();
+//    }else{
+//            buffer.clear(); //remember to clear buffer for GBN
+//            sender.EventGBNProcessor();
+//    }
+//    std::cout<< "sender tc is: "<< (double)sender.tc<< std::endl;
+//    std::cout<< "throughput is: "<< ((double)l)*TOTAL_PACKETS/sender.tc<< std::endl;
+//    std::cout<< "error frames/acks: "<< error_frames<<std::endl;
+//    std::cout<< "lost frames: "<< lost_frames<<std::endl;
+//    return 0;
     
     double actual_tau[2] = {0.005, 0.25};
     double actual_ber[3] = {0.0, 0.00001, 0.0001};

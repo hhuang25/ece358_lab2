@@ -18,10 +18,17 @@ Event Receiver::receive(double time, int SN, Event::error_flag flag)
     extern int error_frames;
     extern int lost_frames;
     extern int N;
-    //extern int simulationTypeNumber;
+    extern int simulationTypeNumber;
     
     event.time = time;
+    event.flag = Event::lost;
+    event.eventType = Event::NIL;
     if(flag == Event::errorFree){
+        if(simulationTypeNumber == 2 && SN != next_expected_frame)//GBN
+        {
+            lost_frames++;
+            return event;
+        }
         next_expected_frame = (next_expected_frame+1)%(N+1);
         //RN = next_expected_frame;
         //std::cout<<"next expected frame: "<< next_expected_frame<<std::endl;

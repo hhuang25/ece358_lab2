@@ -22,7 +22,7 @@ class Event
                     << " flag: " << ev.flag
                     << " RN: "<< ev.RN;
                 }
-                Event(){flag = lost;}
+                Event(){flag = lost; eventType = TIME_OUT;}
 	private:
 		
 };
