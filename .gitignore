@@ -29,3 +29,6 @@
 *data.jpg
 *data.png
 ~\$*
+*.zip
+*.pdf
+*.xlsx

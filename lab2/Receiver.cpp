@@ -25,7 +25,7 @@ Event Receiver::receive(double time, int SN, Event::error_flag flag)
     event.eventType = Event::NIL;
 //    std::cout<< "SN: " << SN<< " next expected frame: "<< next_expected_frame<<std::endl;
     if(flag == Event::errorFree){
-        if(SN != next_expected_frame)//GBN
+        if(simulationTypeNumber == 2 && SN != next_expected_frame)//GBN
         {
             lost_frames++;
             return event;
